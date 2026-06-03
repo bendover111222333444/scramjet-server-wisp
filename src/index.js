@@ -1,5 +1,5 @@
 import { connect } from "cloudflare:sockets";
-import { ServerConnection } from "@mercuryworkshop/wisp-js/dist/wisp-server.js";
+import { ServerConnection } from "@mercuryworkshop/wisp-js/src/server/connection.mjs";
 
 class CloudflareTCPSocket {
   constructor(hostname, port) {
