@@ -1,5 +1,5 @@
 import { connect } from "cloudflare:sockets";
-import { server as wisp } from "@mercuryworkshop/wisp-js/server";
+import { ServerConnection } from "@mercuryworkshop/wisp-js/dist/wisp-server.js";
 
 class CloudflareTCPSocket {
   constructor(hostname, port) {
@@ -70,7 +70,7 @@ export default {
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
 
-    const conn = new wisp.ServerConnection(server, "/wisp/", {
+    const conn = new ServerConnection(server, "/wisp/", {
       TCPSocket: CloudflareTCPSocket,
     });
 
