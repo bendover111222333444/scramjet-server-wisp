@@ -1,115 +1,81 @@
 import { connect } from "cloudflare:sockets";
+import { server as wisp } from "@mercuryworkshop/wisp-js/server";
+
+class CloudflareTCPSocket {
+  constructor(hostname, port) {
+    this.hostname = hostname;
+    this.port = port;
+    this.recv_buffer_size = 128;
+    this.connected = false;
+    this._socket = null;
+    this._reader = null;
+    this._writer = null;
+    this._queue = [];
+    this._waiters = [];
+    this._closed = false;
+    this.paused = false;
+  }
+
+  async connect() {
+    this._socket = connect({ hostname: this.hostname, port: this.port });
+    this._writer = this._socket.writable.getWriter();
+    this._reader = this._socket.readable.getReader();
+    this.connected = true;
+    this._readLoop();
+  }
+
+  async _readLoop() {
+    try {
+      while (true) {
+        const { done, value } = await this._reader.read();
+        if (done) break;
+        if (this._waiters.length > 0) {
+          this._waiters.shift()(value);
+        } else {
+          this._queue.push(value);
+        }
+      }
+    } catch {}
+    this._closed = true;
+    this._waiters.forEach(w => w(null));
+    this._waiters = [];
+  }
+
+  async recv() {
+    if (this._queue.length > 0) return this._queue.shift();
+    if (this._closed) return null;
+    return new Promise(resolve => this._waiters.push(resolve));
+  }
+
+  async send(data) {
+    await this._writer.write(data);
+  }
+
+  async close() {
+    try { this._writer?.close(); } catch {}
+    try { this._reader?.cancel(); } catch {}
+    this._socket?.close();
+  }
+
+  pause() {}
+  resume() {}
+}
 
 export default {
   async fetch(request, env, ctx) {
     if (request.headers.get("Upgrade") !== "websocket") {
-      return new Response("Wisp server running", { status: 200 });
+      return new Response("Wisp server", { status: 200 });
     }
 
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
 
-    ctx.waitUntil(handleWisp(server));
+    const conn = new wisp.ServerConnection(server, "/wisp/", {
+      TCPSocket: CloudflareTCPSocket,
+    });
+
+    ctx.waitUntil(conn.setup().then(() => conn.run()));
 
     return new Response(null, { status: 101, webSocket: client });
   },
 };
-
-async function handleWisp(ws) {
-  const streams = new Map();
-
-  // REQUIRED: send initial CONTINUE packet immediately on connect
-  // stream ID 0 = Wisp v1 handshake, buffer size = 128
-  const initial = new ArrayBuffer(9);
-  const view = new DataView(initial);
-  view.setUint8(0, 0x03);        // CONTINUE type
-  view.setUint32(1, 0, true);    // stream ID 0
-  view.setUint32(5, 128, true);  // buffer size
-  ws.send(initial);
-
-  ws.addEventListener("message", async (event) => {
-    try {
-      const buf = event.data;
-      const view = new DataView(buf);
-      const type = view.getUint8(0);
-      const streamId = view.getUint32(1, true);
-      const payload = buf.slice(5);
-
-      if (type === 0x01) { // CONNECT
-        const streamType = new DataView(payload).getUint8(0);
-        const port = new DataView(payload).getUint16(1, true);
-        const hostname = new TextDecoder().decode(payload.slice(3));
-
-        try {
-          const socket = connect({ hostname, port });
-          streams.set(streamId, socket);
-
-          // send CONTINUE for this stream
-          const cont = new ArrayBuffer(9);
-          const cv = new DataView(cont);
-          cv.setUint8(0, 0x03);
-          cv.setUint32(1, streamId, true);
-          cv.setUint32(5, 128, true);
-          ws.send(cont);
-
-          // pipe TCP → WebSocket
-          socket.readable.pipeTo(new WritableStream({
-            write(chunk) {
-              const header = new ArrayBuffer(5);
-              const hv = new DataView(header);
-              hv.setUint8(0, 0x02); // DATA
-              hv.setUint32(1, streamId, true);
-              const out = new Uint8Array(5 + chunk.byteLength);
-              out.set(new Uint8Array(header), 0);
-              out.set(new Uint8Array(chunk), 5);
-              ws.send(out);
-            },
-            close() {
-              const close = new ArrayBuffer(6);
-              const cv = new DataView(close);
-              cv.setUint8(0, 0x04); // CLOSE
-              cv.setUint32(1, streamId, true);
-              cv.setUint8(5, 0x02);
-              ws.send(close);
-              streams.delete(streamId);
-            },
-            abort() {
-              streams.delete(streamId);
-            }
-          })).catch(() => streams.delete(streamId));
-
-        } catch (e) {
-          // send CLOSE with unreachable reason
-          const close = new ArrayBuffer(6);
-          const cv = new DataView(close);
-          cv.setUint8(0, 0x04);
-          cv.setUint32(1, streamId, true);
-          cv.setUint8(5, 0x42);
-          ws.send(close);
-        }
-
-      } else if (type === 0x02) { // DATA
-        const stream = streams.get(streamId);
-        if (stream) {
-          const writer = stream.writable.getWriter();
-          await writer.write(new Uint8Array(payload));
-          writer.releaseLock();
-        }
-
-      } else if (type === 0x04) { // CLOSE
-        const stream = streams.get(streamId);
-        if (stream) {
-          stream.close?.();
-          streams.delete(streamId);
-        }
-      }
-    } catch (e) {}
-  });
-
-  ws.addEventListener("close", () => {
-    for (const stream of streams.values()) {
-      try { stream.close?.(); } catch {}
-    }
-    streams.clear();
-  });
-}
