@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
   "dependencies": {
     "@mercuryworkshop/wisp-js": "latest"
   },
