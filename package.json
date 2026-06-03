@@ -4,9 +4,6 @@
     "deploy": "npx wrangler deploy",
     "dev": "wrangler dev"
   },
-  "dependencies": {
-    "@mercuryworkshop/wisp-js": "latest"
-  },
   "devDependencies": {
     "wrangler": "^3.0.0"
   }
