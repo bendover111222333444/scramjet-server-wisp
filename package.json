@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "cp node_modules/@mercuryworkshop/wisp-js/src/server/connection.mjs src/connection.mjs && cp -r node_modules/@mercuryworkshop/wisp-js/src src/wisp-src && wrangler deploy --dry-run",
+    "build": "cp -r node_modules/@mercuryworkshop/wisp-js/src/* src/ && wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },
