@@ -1,5 +1,5 @@
 import { connect } from "cloudflare:sockets";
-import { ServerConnection } from "./connection.mjs";
+import { ServerConnection } from "./server/connection.mjs";
 
 class CloudflareTCPSocket {
   constructor(hostname, port) {
