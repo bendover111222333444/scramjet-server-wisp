@@ -26,6 +26,14 @@ async function handleWisp(ws) {
 
   ws.send(continuePacket(0));
 
+  const keepAlive = setInterval(() => {
+      try {
+          ws.send(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00])); // empty packet
+      } catch(e) {
+          clearInterval(keepAlive);
+      }
+  }, 20000);
+
   ws.addEventListener("message", async (event) => {
     try {
       const raw = event.data;
