@@ -50,10 +50,7 @@ async function handleWisp(ws) {
 
         try {
           const isSecure = port === 443;
-          const socket = connect(
-              { hostname: hostname.trim(), port },
-              { secureTransport: isSecure ? "on" : "off" }
-          );
+          const socket = connect({ hostname: hostname.trim(), port });
           const writer = socket.writable.getWriter();
           streams.set(streamId, { writer, socket });
           ws.send(continuePacket(streamId));
