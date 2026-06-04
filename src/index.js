@@ -49,7 +49,11 @@ async function handleWisp(ws) {
         const hostname = new TextDecoder().decode(new Uint8Array(payload).slice(3));
 
         try {
-          const socket = connect({ hostname: hostname.trim(), port });
+          const isSecure = port === 443;
+          const socket = connect(
+              { hostname: hostname.trim(), port },
+              { secureTransport: isSecure ? "on" : "off" }
+          );
           const writer = socket.writable.getWriter();
           streams.set(streamId, { writer, socket });
           ws.send(continuePacket(streamId));
