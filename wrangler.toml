@@ -1,4 +1,6 @@
-name = "wisp-server"
 main = "src/index.js"
 compatibility_date = "2026-06-02"
 compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
