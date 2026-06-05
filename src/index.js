@@ -28,7 +28,7 @@ async function handleWisp(ws) {
 
   const keepAlive = setInterval(() => {
       try {
-          ws.send(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00])); // empty packet
+          ws.send(continuePacket(0));
       } catch(e) {
           clearInterval(keepAlive);
       }
