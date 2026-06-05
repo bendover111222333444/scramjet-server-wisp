@@ -26,14 +26,6 @@ async function handleWisp(ws) {
 
   ws.send(continuePacket(0));
 
-  const keepAlive = setInterval(() => {
-      try {
-          ws.send(continuePacket(0));
-      } catch(e) {
-          clearInterval(keepAlive);
-      }
-  }, 20000);
-
   ws.addEventListener("message", async (event) => {
     try {
       const raw = event.data;
@@ -47,12 +39,25 @@ async function handleWisp(ws) {
         const pv = new DataView(payload);
         const port = pv.getUint16(1, true);
         const hostname = new TextDecoder().decode(new Uint8Array(payload).slice(3));
+        console.log(`[wisp] CONNECT ${hostname}:${port}`);
 
         try {
-          const isSecure = port === 443;
           const socket = connect({ hostname: hostname.trim(), port });
           const writer = socket.writable.getWriter();
-          streams.set(streamId, { writer, socket });
+          streams.set(streamId, { writer, socket, hostname, port });
+
+          socket.opened.then(() => {
+            console.log(`[wisp] opened ${hostname}:${port}`);
+          }).catch(e => {
+            console.error(`[wisp] failed to open ${hostname}:${port}:`, e);
+          });
+
+          socket.closed.then((info) => {
+            console.log(`[wisp] closed ${hostname}:${port}:`, JSON.stringify(info));
+          }).catch(e => {
+            console.error(`[wisp] close error ${hostname}:${port}:`, e);
+          });
+
           ws.send(continuePacket(streamId));
 
           (async () => {
@@ -61,16 +66,18 @@ async function handleWisp(ws) {
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                // value is Uint8Array - copy it properly
                 const chunk = new Uint8Array(value);
                 ws.send(encode(0x02, streamId, chunk.buffer));
               }
-            } catch (e) {}
+            } catch (e) {
+              console.error(`[wisp] read error ${hostname}:${port}:`, e);
+            }
             try { ws.send(closePacket(streamId, 0x02)); } catch {}
             streams.delete(streamId);
           })();
 
         } catch (e) {
+          console.error(`[wisp] connect error ${hostname}:${port}:`, e);
           ws.send(closePacket(streamId, 0x42));
         }
 
@@ -79,26 +86,38 @@ async function handleWisp(ws) {
         if (stream) {
           try {
             await stream.writer.write(new Uint8Array(payload));
-          } catch {}
+          } catch(e) {
+            console.error(`[wisp] write error stream ${streamId}:`, e);
+          }
         }
 
       } else if (type === 0x04) { // CLOSE
         const stream = streams.get(streamId);
         if (stream) {
+          console.log(`[wisp] closing stream ${streamId} ${stream.hostname}:${stream.port}`);
           try { stream.writer.close(); } catch {}
           try { stream.socket.close(); } catch {}
           streams.delete(streamId);
         }
+      } else {
+        console.warn(`[wisp] unknown packet type 0x${type.toString(16)} stream ${streamId}`);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("[wisp] message handler error:", e);
+    }
   });
 
-  ws.addEventListener("close", () => {
-    for (const { writer, socket } of streams.values()) {
+  ws.addEventListener("close", (event) => {
+    console.log("[wisp] WebSocket closed:", event.code, event.reason);
+    for (const { writer, socket, hostname, port } of streams.values()) {
       try { writer.close(); } catch {}
       try { socket.close(); } catch {}
     }
     streams.clear();
+  });
+
+  ws.addEventListener("error", (event) => {
+    console.error("[wisp] WebSocket error:", event);
   });
 }
 
