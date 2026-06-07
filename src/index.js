@@ -1,6 +1,6 @@
 import { connect } from "cloudflare:sockets";
 
-const BUFFER_SIZE = 128;
+const BUFFER_SIZE = 131072;
 
 function encode(type, streamId, payload) {
   const out = new Uint8Array(5 + payload.byteLength);
